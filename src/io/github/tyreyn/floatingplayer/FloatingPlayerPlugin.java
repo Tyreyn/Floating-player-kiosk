@@ -68,6 +68,7 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
     private boolean hiddenByCommand;
     // Title of the track whose window the close button dismissed
     private volatile String dismissedTitle;
+    private volatile boolean screensaverActive;
 
     // The kiosk's own player, from getSendspinPlayer / sendspin.player
     private volatile String kioskPlayerId = "";
@@ -137,6 +138,13 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         running = true;
 
         host.subscribe("sendspin.player");
+        host.subscribe("screensaver.state");
+        host.executeCommand("isScreensaverActive", Collections.<String, Object>emptyMap(), new PluginHost.CommandCallback() {
+            @Override
+            public void onResult(boolean ok, Object data, String error) {
+                if (ok) screensaver(Boolean.TRUE.equals(data));
+            }
+        });
         host.executeCommand("getSendspinPlayer", Collections.<String, Object>emptyMap(), new PluginHost.CommandCallback() {
             @Override
             public void onResult(boolean ok, Object data, String error) {
@@ -191,6 +199,8 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
             }
         } else if ("ks.sendspin.player".equals(event)) {
             kioskPlayer(payload);
+        } else if ("ks.screensaver.state".equals(event)) {
+            screensaver(Boolean.TRUE.equals(payload.get("active")));
         } else if ("settings.choices".equals(event) && PLAYER_SETTING.equals(payload.get("key"))) {
             Object run = payload.get("run");
             listPlayers(run instanceof String ? (String) run : null);
@@ -218,6 +228,12 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         showOnKiosk = Boolean.TRUE.equals(settings.get("showOnKiosk"));
         savedX = number(settings.get("x"), -1);
         savedY = number(settings.get("y"), -1);
+    }
+
+    /** The kiosk's screensaver has its own media controls, so the window stays hidden while it shows. */
+    private void screensaver(boolean active) {
+        screensaverActive = active;
+        main.post(refreshNow);
     }
 
     private void kioskPlayer(Map<?, ?> snapshot) {
@@ -355,7 +371,8 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         // Music Assistant reports a paused player as idle, so idle with a title still counts as loaded media.
         boolean hasMedia = !title.isEmpty() && ("playing".equals(state) || "paused".equals(state) || "idle".equals(state));
         boolean dismissed = dismissedTitle != null && dismissedTitle.equals(title);
-        boolean want = hasMedia && !hiddenByCommand && !dismissed && (showOnKiosk || !kioskInForeground()) && canDraw();
+        boolean want = hasMedia && !hiddenByCommand && !dismissed && !screensaverActive
+                && (showOnKiosk || !kioskInForeground()) && canDraw();
         if (!want) {
             detach();
             return;

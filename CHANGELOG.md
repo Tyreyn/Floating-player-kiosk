@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.4
+
+- The window hides while the Kiosk Satellite screensaver shows, also with **Show on the kiosk too** on.
+
 ## 1.2.3
 
 - README: tested setups. AirPlay works, DLNA does not resume a paused Spotify Connect stream while Kiosk Satellite is in the background.

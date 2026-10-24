@@ -9,7 +9,7 @@ Kiosk Satellite's built-in floating player belongs to the kiosk window, so it di
 - Artwork, title, artist and a progress bar.
 - Previous, play/pause and next buttons.
 - A close button that hides the window without stopping the music. The window returns with the next track or a **Show player window** action.
-- Shows only while the player has media loaded, whether it is playing or paused.
+- Shows only while the player has media loaded, whether it is playing or paused. Hides while the Kiosk Satellite screensaver shows.
 - Drag the window by its artwork or title. The position is remembered.
 
 ## Actions
