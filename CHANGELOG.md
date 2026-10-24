@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.2
+
+- A new session removes a window left behind by an earlier one and stops that session's updates, so an update can no longer leave a second window under the current one.
+- Larger close button.
+
 ## 1.2.1
 
 - Action IDs that Kiosk Satellite accepts. 1.2.0 could not be installed.

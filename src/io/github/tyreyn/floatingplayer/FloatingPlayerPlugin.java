@@ -33,6 +33,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import me.jxl.kiosk.plugins.KioskPlugin;
 import me.jxl.kiosk.plugins.PluginHost;
 
@@ -48,8 +49,13 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
     private static final String SUBSCRIPTION = "player";
     private static final String PLAYER_SETTING = "player";
     private static final String AUTO = "auto";
+    // Process-wide keys. Each plugin version loads in its own class loader, so static fields are not shared between
+    // an old and a new session. System properties are, which lets a new session take over from one that kept running.
+    private static final String OWNER_KEY = "io.github.tyreyn.floatingplayer.owner";
+    private static final String WINDOW_KEY = "io.github.tyreyn.floatingplayer.window";
 
     private final Handler main = new Handler(Looper.getMainLooper());
+    private final String session = UUID.randomUUID().toString();
     private PluginHost host;
     private Context ctx;
     private WindowManager wm;
@@ -93,6 +99,12 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         @Override
         public void run() {
             if (!running) return;
+            if (!session.equals(System.getProperties().get(OWNER_KEY))) {
+                // A newer session took over without this one being stopped
+                running = false;
+                detach();
+                return;
+            }
             refresh();
             main.postDelayed(this, 1000);
         }
@@ -115,6 +127,13 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         }
         wm = (WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE);
         apply(settings);
+        System.getProperties().put(OWNER_KEY, session);
+        main.post(new Runnable() {
+            @Override
+            public void run() {
+                removeLeftoverWindow();
+            }
+        });
         running = true;
 
         host.subscribe("sendspin.player");
@@ -361,12 +380,13 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
     }
 
     private void attach() {
-        if (attached) return;
+        if (attached || !running || !session.equals(System.getProperties().get(OWNER_KEY))) return;
         if (root == null) build();
         place();
         try {
             wm.addView(root, lp);
             attached = true;
+            System.getProperties().put(WINDOW_KEY, root);
         } catch (RuntimeException e) {
             PluginHost h = host;
             if (h != null) h.status("Could not show the player window: " + e.getMessage(), true);
@@ -381,6 +401,19 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
             // Already removed
         }
         attached = false;
+        if (System.getProperties().get(WINDOW_KEY) == root) System.getProperties().remove(WINDOW_KEY);
+    }
+
+    /** Removes a window that an earlier session of this plugin left on screen. */
+    private void removeLeftoverWindow() {
+        Object old = System.getProperties().get(WINDOW_KEY);
+        if (!(old instanceof View) || old == root) return;
+        try {
+            wm.removeViewImmediate((View) old);
+        } catch (RuntimeException ignored) {
+            // Already removed
+        }
+        System.getProperties().remove(WINDOW_KEY);
     }
 
     private void place() {
@@ -455,10 +488,10 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         TextView close = new TextView(ctx);
         close.setText("✕");
         close.setContentDescription("Close the window. The music keeps playing.");
-        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         close.setTextColor(Color.argb(170, 255, 255, 255));
         close.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(dp(30), dp(46));
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(dp(36), dp(46));
         cp.setMargins(dp(2), 0, 0, 0);
         close.setLayoutParams(cp);
         close.setOnClickListener(new View.OnClickListener() {
