@@ -1,0 +1,40 @@
+name: Release
+# Wydanie po wypchnięciu tagu v* – release tworzy github-actions[bot] (Kiosk Satellite przyjmuje tylko takie pliki).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then echo "Uruchom na tagu wydania."; exit 1; fi
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "Wydanie $GITHUB_REF_NAME" --latest
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+      - name: Install Android build tools
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Test
+        run: python3 tools/test.py
+      - name: Build
+        run: python3 tools/build.py --android-platform 35 --version "${GITHUB_REF_NAME#v}"
+      - name: Attach plugin assets to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            dist/*.zip \
+            dist/*.zip.sha256 \
+            dist/kiosk-satellite-plugin.json --clobber

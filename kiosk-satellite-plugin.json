@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "id": "kuchnia-player",
+  "name": "Pływający odtwarzacz (nad aplikacjami)",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAndroidSdk": 26,
+  "entryClass": "pl.kuchnia.kiosk.odtwarzacz.PlywajacyOdtwarzacz",
+  "description": "Małe okienko z okładką, tytułem i przyciskami poprzedni / pauza / następny odtwarzacza Music Assistant, widoczne nad innymi aplikacjami (Chrome, SmartTube…), gdy Kiosk Satellite jest w tle. Na samym kiosku się chowa.",
+  "author": "Tyreyn",
+  "license": "Apache-2.0",
+  "capabilities": [
+    "ma",
+    "host.read"
+  ],
+  "icon": "icon.png",
+  "settings": [
+    {
+      "key": "playerId",
+      "type": "string",
+      "title": "Odtwarzacz Music Assistant",
+      "default": "up3cd38586",
+      "group": "Odtwarzacz",
+      "description": "ID odtwarzacza w Music Assistant, którego muzykę pokazuje okienko (w kuchni: Kuchnia przez DLNA)."
+    },
+    {
+      "key": "showOnKiosk",
+      "type": "boolean",
+      "title": "Pokazuj także na kiosku",
+      "default": false,
+      "group": "Odtwarzacz",
+      "description": "Wyłączone: okienko jest tylko nad innymi aplikacjami, a na dashboardzie znika."
+    },
+    {
+      "key": "x",
+      "type": "number",
+      "title": "Pozycja X",
+      "default": -1,
+      "min": -1,
+      "max": 4096,
+      "step": 1,
+      "group": "Pozycja",
+      "description": "Zapisywana po przeciągnięciu okienka. -1 = prawy dolny róg."
+    },
+    {
+      "key": "y",
+      "type": "number",
+      "title": "Pozycja Y",
+      "default": -1,
+      "min": -1,
+      "max": 4096,
+      "step": 1,
+      "group": "Pozycja",
+      "description": "Zapisywana po przeciągnięciu okienka."
+    }
+  ],
+  "commands": [
+    {
+      "id": "show",
+      "title": "Pokaż okienko"
+    },
+    {
+      "id": "hide",
+      "title": "Schowaj okienko"
+    }
+  ],
+  "groups": [
+    {
+      "title": "Odtwarzacz"
+    },
+    {
+      "title": "Pozycja"
+    }
+  ]
+}
