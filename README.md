@@ -8,9 +8,20 @@ Kiosk Satellite's built-in floating player belongs to the kiosk window, so it di
 
 - Artwork, title, artist and a progress bar.
 - Previous, play/pause and next buttons.
+- A close button that hides the window without stopping the music. The window returns with the next track or a **Show player window** action.
 - Shows only while the player has media loaded, whether it is playing or paused.
 - Drag the window by its artwork or title. The position is remembered.
-- **Show player window** and **Hide player window** actions for gestures, the kiosk drawer or Home Assistant.
+
+## Actions
+
+Run them from a gesture or the kiosk drawer, or expose them to Home Assistant as buttons in the plugin's subpage.
+
+| Action | Effect |
+| --- | --- |
+| **Show player window** | Shows the window again after it was closed or hidden. |
+| **Hide player window** | Hides the window until **Show player window** runs. The music keeps playing. |
+| **Show on the kiosk too** | Turns on **Show on the kiosk too**, for example while the kiosk shows a page without its own media controls. |
+| **Show only above other apps** | Turns **Show on the kiosk too** off again. |
 
 ## Settings
 

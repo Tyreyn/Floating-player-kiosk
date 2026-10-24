@@ -60,6 +60,8 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
     private int savedX = -1;
     private int savedY = -1;
     private boolean hiddenByCommand;
+    // Title of the track whose window the close button dismissed
+    private volatile String dismissedTitle;
 
     // The kiosk's own player, from getSendspinPlayer / sendspin.player
     private volatile String kioskPlayerId = "";
@@ -144,8 +146,17 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
 
     @Override
     public void execute(String command, Map<String, Object> arguments) throws Exception {
-        if ("hide".equals(command)) hiddenByCommand = true;
-        else if ("show".equals(command)) hiddenByCommand = false;
+        if ("hide".equals(command)) {
+            hiddenByCommand = true;
+        } else if ("show".equals(command)) {
+            hiddenByCommand = false;
+            dismissedTitle = null;
+        } else if ("show_on_kiosk".equals(command) || "apps_only".equals(command)) {
+            hiddenByCommand = false;
+            dismissedTitle = null;
+            showOnKiosk = "show_on_kiosk".equals(command);
+            saveSetting("showOnKiosk", showOnKiosk);
+        }
         main.post(refreshNow);
     }
 
@@ -324,7 +335,8 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         if (ctx == null) return;
         // Music Assistant reports a paused player as idle, so idle with a title still counts as loaded media.
         boolean hasMedia = !title.isEmpty() && ("playing".equals(state) || "paused".equals(state) || "idle".equals(state));
-        boolean want = hasMedia && !hiddenByCommand && (showOnKiosk || !kioskInForeground()) && canDraw();
+        boolean dismissed = dismissedTitle != null && dismissedTitle.equals(title);
+        boolean want = hasMedia && !hiddenByCommand && !dismissed && (showOnKiosk || !kioskInForeground()) && canDraw();
         if (!want) {
             detach();
             return;
@@ -375,7 +387,7 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         if (lp == null) return;
         DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
         if (savedX < 0 || savedY < 0) {
-            lp.x = dm.widthPixels - dp(380);
+            lp.x = dm.widthPixels - dp(400);
             lp.y = dm.heightPixels - dp(150);
         } else {
             lp.x = savedX;
@@ -392,7 +404,7 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
 
     private void build() {
         lp = new WindowManager.LayoutParams(
-                dp(360), WindowManager.LayoutParams.WRAP_CONTENT,
+                dp(390), WindowManager.LayoutParams.WRAP_CONTENT,
                 Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT);
@@ -439,6 +451,25 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         playButton = button("▶", "play_pause", "Play or pause");
         row.addView(playButton);
         row.addView(button("⏭", "next", "Next track"));
+
+        TextView close = new TextView(ctx);
+        close.setText("✕");
+        close.setContentDescription("Close the window. The music keeps playing.");
+        close.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        close.setTextColor(Color.argb(170, 255, 255, 255));
+        close.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(dp(30), dp(46));
+        cp.setMargins(dp(2), 0, 0, 0);
+        close.setLayoutParams(cp);
+        close.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // Only the window closes. It comes back with the next track or a Show command.
+                dismissedTitle = title;
+                refresh();
+            }
+        });
+        row.addView(close);
 
         LinearLayout bar = new LinearLayout(ctx);
         bar.setOrientation(LinearLayout.HORIZONTAL);
@@ -500,18 +531,27 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
     private void savePosition() {
         savedX = lp.x;
         savedY = lp.y;
-        final PluginHost h = host;
-        if (h == null) return;
-        final Map<String, Object> values = new HashMap<>();
+        Map<String, Object> values = new HashMap<>();
         values.put("x", savedX);
         values.put("y", savedY);
+        saveSettings(values);
+    }
+
+    private void saveSetting(String key, Object value) {
+        saveSettings(Collections.singletonMap(key, value));
+    }
+
+    /** Saves the named settings off the calling thread, so the settings page shows what the window does. */
+    private void saveSettings(final Map<String, Object> values) {
+        final PluginHost h = host;
+        if (h == null) return;
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
                     h.updateSettings(values);
                 } catch (RuntimeException | LinkageError e) {
-                    // Older Kiosk Satellite versions: the position lasts until the plugin restarts.
+                    // Older Kiosk Satellite versions: the change lasts until the plugin restarts.
                 }
             }
         }).start();

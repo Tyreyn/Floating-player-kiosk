@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+- Close button on the window. It hides the window without stopping the music, until the next track or **Show player window**.
+- **Show on the kiosk too** and **Show only above other apps** actions, so a gesture or Home Assistant can show the window on kiosk pages without their own media controls.
+- Slightly wider window to fit the close button.
+
 ## 1.1.1
 
 - The plugin page shows Ready once the chosen player is followed, instead of keeping an earlier waiting message.
