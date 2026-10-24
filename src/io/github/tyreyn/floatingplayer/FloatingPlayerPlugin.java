@@ -125,12 +125,7 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         });
         listPlayers(null);
         main.post(tick);
-
-        if (!canDraw()) {
-            host.status("Kiosk Satellite is not allowed to display over other apps. Grant it in Android Settings > Apps > Kiosk Satellite.", true);
-        } else {
-            host.status("Ready. The player appears above other apps while music is loaded.", false);
-        }
+        if (!canDraw()) reportReady(host);
     }
 
     @Override
@@ -213,7 +208,8 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         clearMedia();
         main.post(refreshNow);
         if (target.isEmpty()) {
-            h.status("Waiting for this kiosk's Music Assistant player. Pick a player in the settings to follow another one.", false);
+            if (!canDraw()) reportReady(h);
+            else h.status("Waiting for this kiosk's Music Assistant player. Pick a player in the settings to follow another one.", false);
             return;
         }
         Map<String, Object> filter = new HashMap<>();
@@ -223,10 +219,19 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         h.maSubscribe(SUBSCRIPTION, filter, new PluginHost.CommandCallback() {
             @Override
             public void onResult(boolean ok, Object data, String error) {
-                if (!ok) callbackHost.status("Could not follow Music Assistant: " + error, true);
+                if (ok) reportReady(callbackHost);
+                else callbackHost.status("Could not follow Music Assistant: " + error, true);
             }
         });
         load();
+    }
+
+    private void reportReady(PluginHost h) {
+        if (!canDraw()) {
+            h.status("Kiosk Satellite is not allowed to display over other apps. Grant it in Android Settings > Apps > Kiosk Satellite.", true);
+        } else {
+            h.status("Ready. The player appears above other apps while music is loaded.", false);
+        }
     }
 
     private void load() {
