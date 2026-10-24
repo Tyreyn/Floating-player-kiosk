@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "id": "kuchnia-player",
-  "name": "Pływający odtwarzacz (nad aplikacjami)",
-  "version": "1.0.0",
+  "id": "floating-media-player",
+  "name": "Floating Media Player",
+  "version": "1.1.0",
   "apiVersion": 1,
   "minAndroidSdk": 26,
-  "entryClass": "pl.kuchnia.kiosk.odtwarzacz.PlywajacyOdtwarzacz",
-  "description": "Małe okienko z okładką, tytułem i przyciskami poprzedni / pauza / następny odtwarzacza Music Assistant, widoczne nad innymi aplikacjami (Chrome, SmartTube…), gdy Kiosk Satellite jest w tle. Na samym kiosku się chowa.",
+  "entryClass": "io.github.tyreyn.floatingplayer.FloatingPlayerPlugin",
+  "description": "A Music Assistant mini player with artwork, title, progress and previous, play/pause and next buttons that floats above other apps such as Chrome, YouTube or SmartTube while Kiosk Satellite is in the background.",
   "author": "Tyreyn",
   "license": "Apache-2.0",
   "capabilities": [
@@ -16,60 +16,66 @@
   "icon": "icon.png",
   "settings": [
     {
-      "key": "playerId",
+      "key": "player",
       "type": "string",
-      "title": "Odtwarzacz Music Assistant",
-      "default": "up3cd38586",
-      "group": "Odtwarzacz",
-      "description": "ID odtwarzacza w Music Assistant, którego muzykę pokazuje okienko (w kuchni: Kuchnia przez DLNA)."
+      "title": "Player",
+      "default": "auto",
+      "choices": "plugin",
+      "emptyText": "Set up Music Assistant in Settings > Media Player, then press Refresh.",
+      "group": "Player",
+      "description": "The Music Assistant player the window shows and controls. Automatic follows this kiosk's own player."
     },
     {
       "key": "showOnKiosk",
       "type": "boolean",
-      "title": "Pokazuj także na kiosku",
+      "title": "Show on the kiosk too",
       "default": false,
-      "group": "Odtwarzacz",
-      "description": "Wyłączone: okienko jest tylko nad innymi aplikacjami, a na dashboardzie znika."
+      "group": "Player",
+      "description": "Off: the window shows only above other apps and hides while a Kiosk Satellite screen is in front."
     },
     {
       "key": "x",
       "type": "number",
-      "title": "Pozycja X",
+      "title": "Horizontal position",
       "default": -1,
       "min": -1,
       "max": 4096,
       "step": 1,
-      "group": "Pozycja",
-      "description": "Zapisywana po przeciągnięciu okienka. -1 = prawy dolny róg."
+      "input": "field",
+      "unit": "px",
+      "group": "Position",
+      "description": "Saved when you drag the window. -1 places it in the bottom right corner."
     },
     {
       "key": "y",
       "type": "number",
-      "title": "Pozycja Y",
+      "title": "Vertical position",
       "default": -1,
       "min": -1,
       "max": 4096,
       "step": 1,
-      "group": "Pozycja",
-      "description": "Zapisywana po przeciągnięciu okienka."
+      "input": "field",
+      "unit": "px",
+      "group": "Position",
+      "description": "Saved when you drag the window. -1 places it in the bottom right corner."
     }
   ],
   "commands": [
     {
       "id": "show",
-      "title": "Pokaż okienko"
+      "title": "Show player window"
     },
     {
       "id": "hide",
-      "title": "Schowaj okienko"
+      "title": "Hide player window"
     }
   ],
   "groups": [
     {
-      "title": "Odtwarzacz"
+      "title": "Player"
     },
     {
-      "title": "Pozycja"
+      "title": "Position"
     }
   ]
 }

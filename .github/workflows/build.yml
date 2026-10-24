@@ -1,5 +1,5 @@
 name: Release
-# Wydanie po wypchnięciu tagu v* – release tworzy github-actions[bot] (Kiosk Satellite przyjmuje tylko takie pliki).
+# Builds a release when a v* tag is pushed. github-actions[bot] must create the release and its assets: Kiosk Satellite refuses files attached by hand.
 on:
   push:
     tags: ['v*']
@@ -15,9 +15,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "$GITHUB_REF_TYPE" != "tag" ]; then echo "Uruchom na tagu wydania."; exit 1; fi
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then echo "Run this workflow on a release tag."; exit 1; fi
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "Wydanie $GITHUB_REF_NAME" --latest
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "Release $GITHUB_REF_NAME" --latest
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

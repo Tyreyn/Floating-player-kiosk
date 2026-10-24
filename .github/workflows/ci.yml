@@ -1,5 +1,5 @@
 name: Build check
-# Kompilacja i paczka przy każdym wypchnięciu na gałąź – bez wydania. ZIP do ręcznej instalacji jest w artefaktach.
+# Compiles and packages the plugin on every branch push without publishing a release. The ZIP for local testing is in the run artifacts.
 on:
   push:
     branches: ['**']

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Kompilacja wtyczki przeciw SDK i testy manifestu – bez urządzenia."""
+"""Compiles the plugin against the SDK and runs the manifest and asset tests. No device needed."""
 import os
 import sys
 from pathlib import Path

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package pl.kuchnia.kiosk.odtwarzacz;
+package io.github.tyreyn.floatingplayer;
 
 import android.app.ActivityManager;
 import android.content.Context;
@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -26,34 +27,46 @@ import android.widget.TextView;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import me.jxl.kiosk.plugins.KioskPlugin;
 import me.jxl.kiosk.plugins.PluginHost;
 
 /**
- * Pływający odtwarzacz nad innymi aplikacjami. Wbudowane nakładki SDK żyją tylko w oknie Kiosk Satellite i znikają,
- * gdy kiosk schodzi w tło, więc okienko jest zwykłym oknem systemowym (TYPE_APPLICATION_OVERLAY) – wtyczka działa w
- * procesie KS, który ma uprawnienie „wyświetlanie nad innymi aplikacjami”. Dane i sterowanie: Music Assistant przez
- * połączenie kiosku (host.maCall / maSubscribe).
+ * A Music Assistant mini player that floats above other apps.
+ *
+ * <p>SDK overlays live inside the Kiosk Satellite window and disappear once another app comes to the front, so this
+ * plugin adds a regular system window (TYPE_APPLICATION_OVERLAY) instead. The plugin runs inside the Kiosk Satellite
+ * process, which already holds the "Display over other apps" permission. Player state and controls go through the
+ * kiosk's own Music Assistant connection (maCall / maSubscribe).
  */
-public final class PlywajacyOdtwarzacz implements KioskPlugin {
-    private static final String SUB = "odtwarzacz";
+public final class FloatingPlayerPlugin implements KioskPlugin {
+    private static final String SUBSCRIPTION = "player";
+    private static final String PLAYER_SETTING = "player";
+    private static final String AUTO = "auto";
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private PluginHost host;
     private Context ctx;
     private WindowManager wm;
 
-    private String playerId = "up3cd38586";
+    // Settings
+    private String playerSetting = AUTO;
     private boolean showOnKiosk;
-    private boolean hiddenByUser;
     private int savedX = -1;
     private int savedY = -1;
+    private boolean hiddenByCommand;
 
-    // stan odtwarzacza (wątek wtyczki pisze, główny czyta – tylko proste pola)
+    // The kiosk's own player, from getSendspinPlayer / sendspin.player
+    private volatile String kioskPlayerId = "";
+    // The player currently followed
+    private volatile String playerId = "";
+
+    // Player state: written on the plugin's callback worker, read on the main thread
     private volatile String state = "idle";
     private volatile String title = "";
     private volatile String artist = "";
@@ -62,7 +75,7 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
     private volatile double elapsed;
     private volatile long elapsedAt;
 
-    // widok (tylko wątek główny)
+    // Views: main thread only
     private FrameLayout root;
     private WindowManager.LayoutParams lp;
     private ImageView art;
@@ -72,7 +85,7 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
     private View progress;
     private String shownImage = "";
     private boolean attached;
-    private boolean running;
+    private volatile boolean running;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -95,26 +108,36 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
         this.host = host;
         ctx = application();
         if (ctx == null) {
-            host.status("Brak kontekstu aplikacji – okienko nie może się pojawić.", true);
+            host.status("No application context. The player window cannot be shown.", true);
             return;
         }
         wm = (WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE);
         apply(settings);
-        follow();
         running = true;
+
+        host.subscribe("sendspin.player");
+        host.executeCommand("getSendspinPlayer", Collections.<String, Object>emptyMap(), new PluginHost.CommandCallback() {
+            @Override
+            public void onResult(boolean ok, Object data, String error) {
+                if (ok && data instanceof Map) kioskPlayer((Map<?, ?>) data);
+                else follow();
+            }
+        });
+        listPlayers(null);
         main.post(tick);
-        if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(ctx)) {
-            host.status("Kiosk Satellite nie ma uprawnienia „wyświetlanie nad innymi aplikacjami”.", true);
+
+        if (!canDraw()) {
+            host.status("Kiosk Satellite is not allowed to display over other apps. Grant it in Android Settings > Apps > Kiosk Satellite.", true);
         } else {
-            host.status("Gotowe – okienko pokaże się nad innymi aplikacjami, gdy gra muzyka.", false);
+            host.status("Ready. The player appears above other apps while music is loaded.", false);
         }
     }
 
     @Override
     public void configure(Map<String, Object> settings) throws Exception {
-        String before = playerId;
+        String before = playerSetting;
         apply(settings);
-        if (!before.equals(playerId)) follow();
+        if (!before.equals(playerSetting)) follow();
         main.post(new Runnable() {
             @Override
             public void run() {
@@ -126,20 +149,27 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
 
     @Override
     public void execute(String command, Map<String, Object> arguments) throws Exception {
-        if ("hide".equals(command)) hiddenByUser = true;
-        else if ("show".equals(command)) hiddenByUser = false;
+        if ("hide".equals(command)) hiddenByCommand = true;
+        else if ("show".equals(command)) hiddenByCommand = false;
         main.post(refreshNow);
     }
 
     @Override
     public void onEvent(String event, Map<String, Object> payload) throws Exception {
-        if (!("ks.ma.subscription." + SUB).equals(event)) return;
-        if (!"event".equals(payload.get("type"))) {
-            if ("reconnected".equals(payload.get("type"))) load();
-            return;
+        if (("ks.ma.subscription." + SUBSCRIPTION).equals(event)) {
+            Object type = payload.get("type");
+            if ("event".equals(type)) {
+                Object data = payload.get("data");
+                if (data instanceof Map) player((Map<?, ?>) data);
+            } else if ("reconnected".equals(type)) {
+                load();
+            }
+        } else if ("ks.sendspin.player".equals(event)) {
+            kioskPlayer(payload);
+        } else if ("settings.choices".equals(event) && PLAYER_SETTING.equals(payload.get("key"))) {
+            Object run = payload.get("run");
+            listPlayers(run instanceof String ? (String) run : null);
         }
-        Object data = payload.get("data");
-        if (data instanceof Map) player((Map<?, ?>) data);
     }
 
     @Override
@@ -155,38 +185,92 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
         host = null;
     }
 
-    // ---------- dane ----------
+    // ---------- Music Assistant ----------
 
     private void apply(Map<String, Object> settings) {
-        Object p = settings.get("playerId");
-        if (p instanceof String && !((String) p).trim().isEmpty()) playerId = ((String) p).trim();
+        Object p = settings.get(PLAYER_SETTING);
+        playerSetting = p instanceof String && !((String) p).trim().isEmpty() ? ((String) p).trim() : AUTO;
         showOnKiosk = Boolean.TRUE.equals(settings.get("showOnKiosk"));
         savedX = number(settings.get("x"), -1);
         savedY = number(settings.get("y"), -1);
     }
 
+    private void kioskPlayer(Map<?, ?> snapshot) {
+        String id = text(snapshot.get("maPlayerId"), "");
+        boolean changed = !id.equals(kioskPlayerId);
+        kioskPlayerId = id;
+        if (changed || playerId.isEmpty()) follow();
+    }
+
+    /** Follows the chosen player, or the kiosk's own player when the setting is Automatic. */
     private void follow() {
-        if (host == null) return;
-        host.maUnsubscribe(SUB);
+        PluginHost h = host;
+        if (h == null) return;
+        String target = AUTO.equals(playerSetting) ? kioskPlayerId : playerSetting;
+        if (target.equals(playerId) && !target.isEmpty()) return;
+        h.maUnsubscribe(SUBSCRIPTION);
+        playerId = target;
+        clearMedia();
+        main.post(refreshNow);
+        if (target.isEmpty()) {
+            h.status("Waiting for this kiosk's Music Assistant player. Pick a player in the settings to follow another one.", false);
+            return;
+        }
         Map<String, Object> filter = new HashMap<>();
         filter.put("events", Arrays.asList("player_updated"));
-        filter.put("objectId", playerId);
-        final PluginHost h = host;
-        host.maSubscribe(SUB, filter, new PluginHost.CommandCallback() {
+        filter.put("objectId", target);
+        final PluginHost callbackHost = h;
+        h.maSubscribe(SUBSCRIPTION, filter, new PluginHost.CommandCallback() {
             @Override
             public void onResult(boolean ok, Object data, String error) {
-                if (!ok) h.status("Subskrypcja Music Assistant nie powiodła się: " + error, true);
+                if (!ok) callbackHost.status("Could not follow Music Assistant: " + error, true);
             }
         });
         load();
     }
 
     private void load() {
-        if (host == null) return;
-        host.maCall("players/get", Collections.<String, Object>singletonMap("player_id", playerId), new PluginHost.CommandCallback() {
+        PluginHost h = host;
+        if (h == null || playerId.isEmpty()) return;
+        h.maCall("players/get", Collections.<String, Object>singletonMap("player_id", playerId), new PluginHost.CommandCallback() {
             @Override
             public void onResult(boolean ok, Object data, String error) {
                 if (ok && data instanceof Map) player((Map<?, ?>) data);
+            }
+        });
+    }
+
+    /** Lists Music Assistant players as the choices of the Player setting. */
+    private void listPlayers(final String run) {
+        final PluginHost h = host;
+        if (h == null) return;
+        if (run != null) h.setupResult(run, "running", "Asking Music Assistant for its players");
+        h.maCall("players/all", Collections.<String, Object>emptyMap(), new PluginHost.CommandCallback() {
+            @Override
+            public void onResult(boolean ok, Object data, String error) {
+                if (!ok || !(data instanceof List)) {
+                    if (run != null) h.setupResult(run, "error", "Music Assistant did not list its players: " + error);
+                    return;
+                }
+                List<String> ids = new ArrayList<>();
+                List<String> labels = new ArrayList<>();
+                ids.add(AUTO);
+                labels.add("Automatic (this kiosk's player)");
+                for (Object o : (List<?>) data) {
+                    if (!(o instanceof Map) || ids.size() >= 200) continue;
+                    Map<?, ?> p = (Map<?, ?>) o;
+                    String id = text(p.get("player_id"), "");
+                    if (id.isEmpty() || ids.contains(id)) continue;
+                    String name = text(p.get("display_name"), text(p.get("name"), id));
+                    ids.add(id);
+                    labels.add(name.length() > 80 ? name.substring(0, 80) : name);
+                }
+                try {
+                    h.setSettingChoices(PLAYER_SETTING, ids.toArray(new String[0]), labels.toArray(new String[0]));
+                    if (run != null) h.setupResult(run, "success", "Found " + (ids.size() - 1) + " players.");
+                } catch (UnsupportedOperationException e) {
+                    // Older Kiosk Satellite versions without plugin choices: the setting stays a text field.
+                }
             }
         });
     }
@@ -205,32 +289,37 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
             elapsed = dbl(m.get("elapsed_time"));
             elapsedAt = System.currentTimeMillis();
         } else {
-            title = "";
-            artist = "";
-            imageUrl = "";
-            duration = 0;
+            clearMedia();
         }
         main.post(refreshNow);
     }
 
-    private void command(String cmd) {
-        if (host == null) return;
+    private void clearMedia() {
+        title = "";
+        artist = "";
+        imageUrl = "";
+        duration = 0;
+        elapsed = 0;
+    }
+
+    private void command(final String cmd) {
         final PluginHost h = host;
+        if (h == null || playerId.isEmpty()) return;
         h.maCall("players/cmd/" + cmd, Collections.<String, Object>singletonMap("player_id", playerId), new PluginHost.CommandCallback() {
             @Override
             public void onResult(boolean ok, Object data, String error) {
-                if (!ok) h.status("Polecenie " + cmd + " nie powiodło się: " + error, true);
+                if (!ok) h.status("The " + cmd + " command failed: " + error, true);
             }
         });
     }
 
-    // ---------- widok (wątek główny) ----------
+    // ---------- Window (main thread) ----------
 
     private void refresh() {
         if (ctx == null) return;
+        // Music Assistant reports a paused player as idle, so idle with a title still counts as loaded media.
         boolean hasMedia = !title.isEmpty() && ("playing".equals(state) || "paused".equals(state) || "idle".equals(state));
-        boolean kioskOnTop = kioskInForeground();
-        boolean want = hasMedia && !hiddenByUser && (showOnKiosk || !kioskOnTop) && canDraw();
+        boolean want = hasMedia && !hiddenByCommand && (showOnKiosk || !kioskInForeground()) && canDraw();
         if (!want) {
             detach();
             return;
@@ -262,7 +351,8 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
             wm.addView(root, lp);
             attached = true;
         } catch (RuntimeException e) {
-            if (host != null) host.status("Nie udało się pokazać okienka: " + e.getMessage(), true);
+            PluginHost h = host;
+            if (h != null) h.status("Could not show the player window: " + e.getMessage(), true);
         }
     }
 
@@ -271,14 +361,14 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
         try {
             wm.removeView(root);
         } catch (RuntimeException ignored) {
-            // okno już usunięte
+            // Already removed
         }
         attached = false;
     }
 
     private void place() {
         if (lp == null) return;
-        android.util.DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
+        DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
         if (savedX < 0 || savedY < 0) {
             lp.x = dm.widthPixels - dp(380);
             lp.y = dm.heightPixels - dp(150);
@@ -290,7 +380,7 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
             try {
                 wm.updateViewLayout(root, lp);
             } catch (RuntimeException ignored) {
-                // okno zniknęło w międzyczasie
+                // Removed in the meantime
             }
         }
     }
@@ -340,10 +430,10 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
         texts.addView(titleView);
         texts.addView(artistView);
 
-        row.addView(button("⏮", "previous"));
-        playButton = button("▶", "play_pause");
+        row.addView(button("⏮", "previous", "Previous track"));
+        playButton = button("▶", "play_pause", "Play or pause");
         row.addView(playButton);
-        row.addView(button("⏭", "next"));
+        row.addView(button("⏭", "next", "Next track"));
 
         LinearLayout bar = new LinearLayout(ctx);
         bar.setOrientation(LinearLayout.HORIZONTAL);
@@ -362,7 +452,7 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
         progress.setBackground(fill);
         bar.addView(progress, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 0f));
 
-        // Przeciąganie za okładkę albo tytuł; pozycja zapisuje się w ustawieniach wtyczki.
+        // Drag by the artwork or the title. The position is saved in the plugin's settings.
         View.OnTouchListener drag = new View.OnTouchListener() {
             private float startX, startY;
             private int baseX, baseY;
@@ -387,7 +477,7 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
                         try {
                             wm.updateViewLayout(root, lp);
                         } catch (RuntimeException ignored) {
-                            // okno zniknęło
+                            // Removed in the meantime
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
@@ -416,7 +506,7 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
                 try {
                     h.updateSettings(values);
                 } catch (RuntimeException | LinkageError e) {
-                    // starsza wersja KS – pozycja zostaje do restartu
+                    // Older Kiosk Satellite versions: the position lasts until the plugin restarts.
                 }
             }
         }).start();
@@ -432,9 +522,10 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
         return t;
     }
 
-    private TextView button(String symbol, final String cmd) {
+    private TextView button(String symbol, final String cmd, String description) {
         TextView b = new TextView(ctx);
         b.setText(symbol);
+        b.setContentDescription(description);
         b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
         b.setTextColor(Color.WHITE);
         b.setGravity(Gravity.CENTER);
@@ -488,9 +579,9 @@ public final class PlywajacyOdtwarzacz implements KioskPlugin {
         }
     }
 
-    // ---------- pomocnicze ----------
+    // ---------- Helpers ----------
 
-    /** Kiosk Satellite na wierzchu (jego ekran widoczny) – wtedy okienko się chowa. */
+    /** True while a Kiosk Satellite screen is in front. The window then stays hidden unless Show on kiosk is on. */
     private boolean kioskInForeground() {
         try {
             ActivityManager.RunningAppProcessInfo info = new ActivityManager.RunningAppProcessInfo();
