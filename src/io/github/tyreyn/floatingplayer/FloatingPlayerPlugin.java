@@ -151,10 +151,10 @@ public final class FloatingPlayerPlugin implements KioskPlugin {
         } else if ("show".equals(command)) {
             hiddenByCommand = false;
             dismissedTitle = null;
-        } else if ("show_on_kiosk".equals(command) || "apps_only".equals(command)) {
+        } else if ("showOnKiosk".equals(command) || "appsOnly".equals(command)) {
             hiddenByCommand = false;
             dismissedTitle = null;
-            showOnKiosk = "show_on_kiosk".equals(command);
+            showOnKiosk = "showOnKiosk".equals(command);
             saveSetting("showOnKiosk", showOnKiosk);
         }
         main.post(refreshNow);

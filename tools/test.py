@@ -31,3 +31,13 @@ subprocess.run([sys.executable, str(root / 'tools/test_plugin_manifest.py')], ch
 subprocess.run([sys.executable, str(root / "tools/test_plugin_assets.py")], check=True)
 
 
+
+# Kiosk Satellite refuses the whole manifest over one bad action ID, so check them before a release does.
+import json
+import re
+manifest = json.loads((root / 'kiosk-satellite-plugin.json').read_text(encoding='utf-8'))
+for kind in ('commands', 'triggers', 'buttons'):
+    ids = [item['id'] for item in manifest.get(kind, [])]
+    bad = [i for i in ids if not re.fullmatch(r'[a-z][a-zA-Z0-9]{0,63}', i)]
+    if bad or len(ids) != len(set(ids)):
+        raise SystemExit(f'Invalid or duplicate {kind} IDs: {bad or ids}. Use camelCase such as showWindow.')

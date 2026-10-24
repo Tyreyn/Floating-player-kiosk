@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1
+
+- Action IDs that Kiosk Satellite accepts. 1.2.0 could not be installed.
+
 ## 1.2.0
 
 - Close button on the window. It hides the window without stopping the music, until the next track or **Show player window**.
