@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.3
+
+- README: tested setups. AirPlay works, DLNA does not resume a paused Spotify Connect stream while Kiosk Satellite is in the background.
+
 ## 1.2.2
 
 - A new session removes a window left behind by an earlier one and stops that session's updates, so an update can no longer leave a second window under the current one.

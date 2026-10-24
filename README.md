@@ -31,7 +31,19 @@ Run them from a gesture or the kiosk drawer, or expose them to Home Assistant as
 | **Show on the kiosk too** | Also show the window while a Kiosk Satellite screen is in front. Off by default. |
 | **Horizontal position** / **Vertical position** | Saved when you drag the window. `-1` places it in the bottom right corner. |
 
-**Automatic** uses the Music Assistant player that stands for this kiosk's own Sendspin player. If your kiosk plays music through another player, such as its DLNA renderer, pick that player instead.
+**Automatic** uses the Music Assistant player that stands for this kiosk's own Sendspin player. If your kiosk plays music through another player, such as its AirPlay receiver, pick that player instead.
+
+## Tested setups
+
+Tested on a Lenovo Tab (TB351FU) with Music Assistant playing a Spotify Connect source. Pausing and resuming from the window while another app, such as Chrome, is in front depends on how the music reaches the kiosk:
+
+| How the kiosk receives music | Result |
+| --- | --- |
+| **AirPlay** receiver | **Recommended.** Pause and resume work above other apps, and the music keeps playing after returning to the kiosk. Track changes are clean. |
+| **DLNA** renderer | **Not recommended with this plugin.** Music Assistant stops the DLNA stream instead of pausing it. While Kiosk Satellite is in the background, the stream does not restart on resume, and the Spotify Connect session ends once the kiosk comes back to the front. Commands sent from the Spotify app behave the same, so the plugin cannot work around it. Pausing on the kiosk itself works. |
+| **Sendspin** player | Audio dropouts and wavering sound on track changes in our tests. |
+
+To use AirPlay, set the Kiosk Satellite media player to this device with the AirPlay receiver turned on. Music Assistant then adds AirPlay as an output of the kiosk's player and uses it on its own.
 
 ## Requirements
 
